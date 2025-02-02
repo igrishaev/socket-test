@@ -1,42 +1,57 @@
 package me.ivan;
 
 import java.io.*;
-import java.net.Socket;
+import java.net.SocketException;
+import java.nio.channels.Channels;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-public class Session extends Thread implements AutoCloseable {
+public class Session extends Thread implements AutoCloseable, Thread.UncaughtExceptionHandler {
 
-    private final UUID id;
+    private final UUID uuid;
+    private final SocketChannel socketChannel;
     private final DataInputStream dataInputStream;
     private final DataOutputStream dataOutputStream;
 
-    private Session(final DataOutputStream dataOutputStream,
+    private Session(final SocketChannel socketChannel,
+                    final DataOutputStream dataOutputStream,
                     final DataInputStream dataInputStream
     ) {
-        this.id = UUID.randomUUID();
+        this.uuid = UUID.randomUUID();
+        this.socketChannel = socketChannel;
         this.dataInputStream = dataInputStream;
         this.dataOutputStream = dataOutputStream;
     }
 
     @Override
     public int hashCode() {
-        return this.id.hashCode();
+        return this.uuid.hashCode();
     }
 
     @Override
     public boolean equals(final Object o) {
         if (o instanceof Session s) {
-            return this.id == s.id;
+            return this.uuid == s.uuid;
         } else {
             return false;
         }
     }
 
-    public static Session create(final Socket socket) throws IOException {
-        final DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
-        final DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
-        final Session session = new Session(dataOutputStream, dataInputStream);
+    @Override
+    public String toString() {
+        return String.format("Session %s, thread id: %s",
+                this.uuid,
+                threadId()
+        );
+    }
+
+    public static Session create(final SocketChannel socketChannel) throws IOException {
+        final DataInputStream dataInputStream = new DataInputStream(Channels.newInputStream(socketChannel));
+        final DataOutputStream dataOutputStream = new DataOutputStream(Channels.newOutputStream(socketChannel));
+        final Session session = new Session(socketChannel, dataOutputStream, dataInputStream);
+        session.setUncaughtExceptionHandler(session);
         session.start();
         return session;
     }
@@ -60,33 +75,37 @@ public class Session extends Thread implements AutoCloseable {
         while (!isInterrupted()) {
             try {
                 final String request = readMessage();
-                System.out.println(request);
                 final String response = String.format("Your message was: %s", request);
                 sendMessage(response);
-            } catch (EOFException e) {
-                System.out.println("client has disconnected");
-                break;
             } catch (IOException e) {
-                System.out.println("IO exception has happened");
-                break;
+                throw new RuntimeException(e);
             }
         }
-        try {
-            closeIO();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
-    private void closeIO() throws IOException {
-        dataInputStream.close();
-        dataOutputStream.close();
     }
 
     @Override
     public void close() throws Exception {
         interrupt();
         join();
+        socketChannel.close();
+        dataInputStream.close();
+        dataOutputStream.close();
+
+    }
+
+    @Override
+    public void uncaughtException(final Thread t, final Throwable e) {
+        final Throwable cause = e.getCause();
+        if (cause instanceof EOFException ignored) {
+            System.out.println("the connection was closed");
+        } else if (cause instanceof ClosedByInterruptException ignored) {
+            System.out.println("the connection thread was interrupted");
+        }
+//        else if (cause instanceof SocketException) {
+//            System.out.println("SocketException");
+//        }
+        else {
+            e.printStackTrace();
+        }
     }
 }
