@@ -23,5 +23,12 @@ public class Storage {
         data.remove(key);
     }
 
+    public void clear() {
+        data.clear();
+    }
+
+    public int count() {
+        return data.size();
+    }
 
 }
