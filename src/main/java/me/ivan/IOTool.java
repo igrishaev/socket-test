@@ -31,10 +31,6 @@ public class IOTool {
         return readBB(channel, 4).thenApplyAsync(ByteBuffer::getInt);
     }
 
-    public static CompletableFuture<Long> readLong(final AsynchronousSocketChannel channel) {
-        return readBB(channel, 8).thenApplyAsync(ByteBuffer::getLong);
-    }
-
     public static CompletableFuture<byte[]> readBytes(final AsynchronousSocketChannel channel, final int len) {
         return readBB(channel, len).thenApplyAsync(ByteBuffer::array);
     }

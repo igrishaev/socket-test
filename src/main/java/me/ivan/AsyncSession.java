@@ -3,40 +3,47 @@ package me.ivan;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class AsyncSession {
 
     private final AsynchronousSocketChannel channel;
+    private final Executor executor;
 
-    private AsyncSession(final AsynchronousSocketChannel channel) {
+    private AsyncSession(final AsynchronousSocketChannel channel, final Executor executor) {
         this.channel = channel;
+        this.executor = executor;
     }
 
-    public static AsyncSession create(final AsynchronousSocketChannel channel) {
-        return new AsyncSession(channel);
+    public static AsyncSession create(final AsynchronousSocketChannel channel,
+                                      final Executor executor) {
+        return new AsyncSession(channel, executor);
+    }
+
+    public static String bytesToString (final byte[] buf) {
+        return new String(buf, StandardCharsets.UTF_8);
     }
 
     public CompletableFuture<String> readMessage() {
-        return IOTool
-                .readInteger(channel)
-                .thenComposeAsync((final Integer len) -> IOTool.readBytes(channel, len))
-                .thenApplyAsync((final byte[] buf) -> new String(buf, StandardCharsets.UTF_8));
+        return IOTool.readInteger(channel)
+                .thenComposeAsync((final Integer len) -> IOTool.readBytes(channel, len), executor)
+                .thenApplyAsync(AsyncSession::bytesToString, executor);
     }
 
     public CompletableFuture<Integer> sendMessage(final String message) {
         final byte[] buf = message.getBytes(StandardCharsets.UTF_8);
         final int len = buf.length;
-        return IOTool
-                .writeInteger(channel, len)
-                .thenComposeAsync((final Integer ignored) -> IOTool.writeBytes(channel, buf))
-                .thenApplyAsync((final Integer ignored) -> 4 + len);
+        return IOTool.writeInteger(channel, len)
+                .thenComposeAsync((final Integer ignored) -> IOTool.writeBytes(channel, buf), executor)
+                .thenApplyAsync((final Integer ignored) -> 4 + len, executor);
     }
 
     public String handleMessage(final String message) {
         System.out.println(message);
         if (message.equals("STOP")) {
             try {
-                Thread.sleep(10000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -50,9 +57,9 @@ public class AsyncSession {
 
     public CompletableFuture<Integer> handle() {
         return readMessage()
-                .thenApplyAsync(this::handleMessage)
-                .thenComposeAsync(this::sendMessage)
-                .thenComposeAsync((final Integer ignored) -> handle());
+                .thenApplyAsync(this::handleMessage, executor)
+                .thenComposeAsync(this::sendMessage, executor)
+                .thenComposeAsync((final Integer ignored) -> handle(), executor);
     }
 
 }
