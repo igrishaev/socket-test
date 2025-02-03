@@ -1,6 +1,7 @@
 package me.ivan;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
@@ -15,11 +16,15 @@ public class Server extends Thread implements AutoCloseable, Thread.UncaughtExce
     private static final String host = "127.0.0.1";
     private final List<Session> sessions;
     private boolean isClosed;
+    private final TryLock lock;
+
+    private final static System.Logger logger = System.getLogger(Server.class.getCanonicalName());
 
     private Server(final ServerSocketChannel channel) {
         this.channel = channel;
         this.sessions = new ArrayList<>(maxSessions);
         this.isClosed = false;
+        this.lock = TryLock.create();
     }
 
     public static Server create(final int port) throws IOException {
@@ -41,12 +46,14 @@ public class Server extends Thread implements AutoCloseable, Thread.UncaughtExce
                 break;
             }
             catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException(e);
             }
             final Session session;
             try {
                 session = Session.create(ch);
-                sessions.add(session);
+                try (TryLock ignored = lock.get()) {
+                    sessions.add(session);
+                }
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -60,24 +67,29 @@ public class Server extends Thread implements AutoCloseable, Thread.UncaughtExce
 
     @Override
     public void close() throws Exception {
-        this.interrupt();
-        for (Session session: sessions) {
-            session.interrupt();
+        try (TryLock ignored = lock.get()) {
+            this.interrupt();
+            for (Session session: sessions) {
+                session.interrupt();
+            }
+            for (Session session: sessions) {
+                session.join();
+            }
+            for (Session session: sessions) {
+                session.close();
+            }
+            this.join();
+            isClosed = true;
         }
-        for (Session session: sessions) {
-            session.join();
-        }
-        this.join();
-        isClosed = true;
     }
 
     @Override
     public void uncaughtException(Thread t, Throwable e) {
         final Throwable cause = e.getCause();
         if (cause instanceof ClosedByInterruptException ignored) {
-            System.out.println("The server main loop was interrupted");
+            logger.log(Log.INFO, "Server main loop was interrupted");
         } else {
-            e.printStackTrace();
+            logger.log(Log.ERROR, "Session unexpected exception", e);
         }
     }
 }

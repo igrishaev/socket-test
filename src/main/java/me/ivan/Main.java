@@ -1,31 +1,54 @@
 package me.ivan;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+
 public class Main {
 
     private static final int port = 1999;
 
-    public static void main(String[] args) {
-        try (final Server server = Server.create(port)) {
+    public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
 
-            Client c1 = Client.connect(port);
-            c1.sendMessage("hello");
-            System.out.println(c1.getMessage());
+        final AsyncServer server = new AsyncServer();
+        // server.start().get();
+        server.loop();
 
-            Client c2 = Client.connect(port);
-            c2.sendMessage("test");
-            System.out.println(c2.getMessage());
+        Client c1 = Client.connect(21998);
+        Client c2 = Client.connect(21998);
 
-            Client c3 = Client.connect(port);
-            c3.sendMessage("test");
-            // System.out.println(c3.getMessage());
+        c1.sendMessage("STOP");
+//        System.out.println(c1.getMessage());
 
-            c1.close();
-            c2.close();
-            c3.close();
 
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        c2.sendMessage("hoho");
+        System.out.println(c2.getMessage());
+//
+        c1.sendMessage("bar");
+        System.out.println(c1.getMessage());
+        System.out.println(c1.getMessage());
+
+
+//        System.in.read();
+
+
+
+//        try (final Server server = Server.create(port)) {
+//
+
+//
+
+//
+//            Client c3 = Client.connect(port);
+//            c3.sendMessage("test");
+//            // System.out.println(c3.getMessage());
+//
+////            c1.close();
+////            c2.close();
+////            c3.close();
+//
+//        } catch (Exception e) {
+//            throw new RuntimeException(e);
+//        }
 
 
     }

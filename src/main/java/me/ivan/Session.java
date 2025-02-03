@@ -14,6 +14,9 @@ public class Session extends Thread implements AutoCloseable, Thread.UncaughtExc
     private final SocketChannel socketChannel;
     private final DataInputStream dataInputStream;
     private final DataOutputStream dataOutputStream;
+    private final TryLock lock;
+
+    private final static System.Logger logger = System.getLogger(Server.class.getCanonicalName());
 
     private Session(final SocketChannel socketChannel,
                     final DataOutputStream dataOutputStream,
@@ -23,6 +26,7 @@ public class Session extends Thread implements AutoCloseable, Thread.UncaughtExc
         this.socketChannel = socketChannel;
         this.dataInputStream = dataInputStream;
         this.dataOutputStream = dataOutputStream;
+        this.lock = TryLock.create();
     }
 
     @Override
@@ -57,9 +61,7 @@ public class Session extends Thread implements AutoCloseable, Thread.UncaughtExc
     }
 
     private String readMessage() throws IOException {
-        System.out.println("reading");
         final int len = dataInputStream.readInt();
-        System.out.println(len);
         final byte[] buf = dataInputStream.readNBytes(len);
         return new String(buf, StandardCharsets.UTF_8);
     }
@@ -70,15 +72,19 @@ public class Session extends Thread implements AutoCloseable, Thread.UncaughtExc
         dataOutputStream.write(buf);
     }
 
+    private String handle(final String request) {
+        return String.format("Your message was: %s", request);
+    }
+
     @Override
     public void run() {
         while (!isInterrupted()) {
             try {
                 final String request = readMessage();
-                final String response = String.format("Your message was: %s", request);
+                final String response = handle(request);
                 sendMessage(response);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException(e);
             }
         }
     }
@@ -97,15 +103,12 @@ public class Session extends Thread implements AutoCloseable, Thread.UncaughtExc
     public void uncaughtException(final Thread t, final Throwable e) {
         final Throwable cause = e.getCause();
         if (cause instanceof EOFException ignored) {
-            System.out.println("the connection was closed");
+            logger.log(Log.INFO, "Session connection was closed");
         } else if (cause instanceof ClosedByInterruptException ignored) {
-            System.out.println("the connection thread was interrupted");
+            logger.log(Log.INFO, "Session thread was interrupted");
         }
-//        else if (cause instanceof SocketException) {
-//            System.out.println("SocketException");
-//        }
         else {
-            e.printStackTrace();
+            logger.log(Log.ERROR, "Server unexpected exception", e);
         }
     }
 }
