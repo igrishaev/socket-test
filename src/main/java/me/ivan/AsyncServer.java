@@ -2,57 +2,67 @@ package me.ivan;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class AsyncServer {
+public class AsyncServer implements AutoCloseable {
 
     private final AsynchronousServerSocketChannel channel;
-    private final Executor executor;
+    private final SocketAddress address;
+    private final AtomicBoolean isClosed;
 
-    public AsyncServer() throws IOException {
-        channel = AsynchronousServerSocketChannel.open();
-        channel.bind(new InetSocketAddress("127.0.0.1", 21998), 16);
-        executor = Executors.newFixedThreadPool(8);
+    private final static System.Logger logger =
+            System.getLogger(Server.class.getCanonicalName());
+
+    private AsyncServer(final AsynchronousServerSocketChannel channel,
+                        final SocketAddress address) {
+        this.channel = channel;
+        this.address = address;
+        this.isClosed = new AtomicBoolean(false);
+    }
+
+    public static AsyncServer create(final String host,
+                                     final int port,
+                                     final int backlog) throws IOException {
+
+        final AsynchronousServerSocketChannel channel = AsynchronousServerSocketChannel.open();
+        final SocketAddress address = new InetSocketAddress(host, port);
+        channel.bind(address, backlog);
+        final AsyncServer server = new AsyncServer(channel, address);
+        server.loop();
+        return server;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("<AsyncServer %s, closed: %s>", address, isClosed.get());
     }
 
     public void loop() {
         channel.accept(null, new CompletionHandler<>() {
             @Override
             public void completed(AsynchronousSocketChannel result, Object attachment) {
-                System.out.println("accepted");
-                AsyncSession.create(result, executor).handle();
-                channel.accept(null, this);
+                CompletableFuture.supplyAsync(() -> AsyncSession.create(result).handle());
+                if (!isClosed.get()) {
+                    channel.accept(null, this);
+                }
             }
             @Override
             public void failed(Throwable e, Object attachment) {
-                e.printStackTrace();
-                channel.accept(null, this);
+                logger.log(Log.ERROR, "failed to accept a new connection", e);
+                if (!isClosed.get()) {
+                    channel.accept(null, this);
+                }
             }
         });
     }
 
-    public CompletableFuture<AsyncSession> accept() {
-        final CompletableFuture<AsyncSession> fut = new CompletableFuture<>();
-        channel.accept(null, new CompletionHandler<>() {
-            @Override
-            public void completed(AsynchronousSocketChannel result, Object attachment) {
-                fut.complete(AsyncSession.create(result, executor));
-            }
-            @Override
-            public void failed(Throwable exc, Object attachment) {
-                fut.completeExceptionally(exc);
-            }
-        });
-        return fut;
+    @Override
+    public void close() {
+        isClosed.set(true);
     }
-
-
-
-
-
 }

@@ -3,22 +3,17 @@ package me.ivan;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 public class AsyncSession {
 
     private final AsynchronousSocketChannel channel;
-    private final Executor executor;
 
-    private AsyncSession(final AsynchronousSocketChannel channel, final Executor executor) {
+    private AsyncSession(final AsynchronousSocketChannel channel) {
         this.channel = channel;
-        this.executor = executor;
     }
 
-    public static AsyncSession create(final AsynchronousSocketChannel channel,
-                                      final Executor executor) {
-        return new AsyncSession(channel, executor);
+    public static AsyncSession create(final AsynchronousSocketChannel channel) {
+        return new AsyncSession(channel);
     }
 
     public static String bytesToString (final byte[] buf) {
@@ -27,16 +22,16 @@ public class AsyncSession {
 
     public CompletableFuture<String> readMessage() {
         return IOTool.readInteger(channel)
-                .thenComposeAsync((final Integer len) -> IOTool.readBytes(channel, len), executor)
-                .thenApplyAsync(AsyncSession::bytesToString, executor);
+                .thenComposeAsync((final Integer len) -> IOTool.readBytes(channel, len))
+                .thenApplyAsync(AsyncSession::bytesToString);
     }
 
     public CompletableFuture<Integer> sendMessage(final String message) {
         final byte[] buf = message.getBytes(StandardCharsets.UTF_8);
         final int len = buf.length;
         return IOTool.writeInteger(channel, len)
-                .thenComposeAsync((final Integer ignored) -> IOTool.writeBytes(channel, buf), executor)
-                .thenApplyAsync((final Integer ignored) -> 4 + len, executor);
+                .thenComposeAsync((final Integer ignored) -> IOTool.writeBytes(channel, buf))
+                .thenApplyAsync((final Integer ignored) -> 4 + len);
     }
 
     public String handleMessage(final String message) {
@@ -57,9 +52,9 @@ public class AsyncSession {
 
     public CompletableFuture<Integer> handle() {
         return readMessage()
-                .thenApplyAsync(this::handleMessage, executor)
-                .thenComposeAsync(this::sendMessage, executor)
-                .thenComposeAsync((final Integer ignored) -> handle(), executor);
+                .thenApplyAsync(this::handleMessage)
+                .thenComposeAsync(this::sendMessage)
+                .thenComposeAsync((final Integer ignored) -> handle());
     }
 
 }
