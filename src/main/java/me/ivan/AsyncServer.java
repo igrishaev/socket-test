@@ -9,11 +9,12 @@ import java.nio.channels.CompletionHandler;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class AsyncServer implements AutoCloseable {
+public class AsyncServer implements AutoCloseable, CompletionHandler<AsynchronousSocketChannel, Object> {
 
     private final AsynchronousServerSocketChannel channel;
     private final SocketAddress address;
     private final AtomicBoolean isClosed;
+    private final Storage storage;
 
     private final static System.Logger logger =
             System.getLogger(Server.class.getCanonicalName());
@@ -23,6 +24,7 @@ public class AsyncServer implements AutoCloseable {
         this.channel = channel;
         this.address = address;
         this.isClosed = new AtomicBoolean(false);
+        this.storage = Storage.create();
     }
 
     public static AsyncServer create(final String host,
@@ -34,6 +36,7 @@ public class AsyncServer implements AutoCloseable {
         channel.bind(address, backlog);
         final AsyncServer server = new AsyncServer(channel, address);
         server.loop();
+        logger.log(Log.INFO, String.format("server %s has been started", server));
         return server;
     }
 
@@ -43,26 +46,27 @@ public class AsyncServer implements AutoCloseable {
     }
 
     public void loop() {
-        channel.accept(null, new CompletionHandler<>() {
-            @Override
-            public void completed(AsynchronousSocketChannel result, Object attachment) {
-                CompletableFuture.supplyAsync(() -> AsyncSession.create(result).handle());
-                if (!isClosed.get()) {
-                    channel.accept(null, this);
-                }
-            }
-            @Override
-            public void failed(Throwable e, Object attachment) {
-                logger.log(Log.ERROR, "failed to accept a new connection", e);
-                if (!isClosed.get()) {
-                    channel.accept(null, this);
-                }
-            }
-        });
+        if (!isClosed.get()) {
+            channel.accept(null, this);
+        }
     }
 
     @Override
-    public void close() {
+    public void completed(final AsynchronousSocketChannel result, final Object attachment) {
+        CompletableFuture.supplyAsync(() -> AsyncSession.create(result, storage).handle());
+        loop();
+    }
+
+    @Override
+    public void failed(final Throwable e, final Object attachment) {
+        logger.log(Log.ERROR, String.format("failed to accept a new connection, server: %s", this), e);
+        loop();
+    }
+
+    @Override
+    public void close() throws IOException {
         isClosed.set(true);
+        channel.close();
+        logger.log(Log.INFO, String.format("server %s has been stopped", this));
     }
 }

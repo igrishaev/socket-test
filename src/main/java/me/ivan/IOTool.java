@@ -3,6 +3,7 @@ package me.ivan;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
 public class IOTool {
@@ -27,12 +28,26 @@ public class IOTool {
         return fut;
     }
 
+    public static CompletableFuture<Byte> readByte(final AsynchronousSocketChannel channel) {
+        return readBB(channel, 1).thenApplyAsync(ByteBuffer::get);
+    }
+
     public static CompletableFuture<Integer> readInteger(final AsynchronousSocketChannel channel) {
         return readBB(channel, 4).thenApplyAsync(ByteBuffer::getInt);
     }
 
     public static CompletableFuture<byte[]> readBytes(final AsynchronousSocketChannel channel, final int len) {
         return readBB(channel, len).thenApplyAsync(ByteBuffer::array);
+    }
+
+    public static CompletableFuture<byte[]> readByteArray(final AsynchronousSocketChannel channel) {
+        return readInteger(channel)
+                .thenComposeAsync((final Integer len) -> readBytes(channel, len));
+    }
+
+    public static CompletableFuture<String> readString(final AsynchronousSocketChannel channel) {
+        return readByteArray(channel)
+                .thenApplyAsync((final byte[] buf) -> new String(buf, StandardCharsets.UTF_8));
     }
 
     public static CompletableFuture<Integer> writeBB(final AsynchronousSocketChannel channel, final ByteBuffer bb) {

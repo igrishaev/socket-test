@@ -9,19 +9,26 @@ public class Main {
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
 
-        try (final AsyncServer ignored = AsyncServer.create("127.0.0.1", port, 16)) {
+        try (final AsyncServer server = AsyncServer.create("127.0.0.1", port, 16)) {
+
+            System.out.println(server);
+
             Client c1 = Client.connect(port);
             Client c2 = Client.connect(port);
 
             c1.sendMessage("STOP");
-//        System.out.println(c1.getMessage());
+            System.out.println(c1.getMessage());
+
+            // server.close();
 
             c2.sendMessage("hoho");
             System.out.println(c2.getMessage());
 //
             c1.sendMessage("bar");
             System.out.println(c1.getMessage());
-            System.out.println(c1.getMessage());
+//            System.out.println(c1.getMessage());
+
+            // System.in.read();
         }
 
 
