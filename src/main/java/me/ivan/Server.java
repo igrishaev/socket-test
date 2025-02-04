@@ -3,34 +3,39 @@ package me.ivan;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class Server extends Thread implements AutoCloseable, Thread.UncaughtExceptionHandler {
 
     private final ServerSocketChannel channel;
-    private static final int maxSessions = 4;
-    private static final String host = "127.0.0.1";
-    private final List<Session> sessions;
+    private final Executor executor;
+    private static final int backlog = 4;
+    private final SocketAddress address;
+
     private boolean isClosed;
-    private final TryLock lock;
 
     private final static System.Logger logger = System.getLogger(Server.class.getCanonicalName());
 
-    private Server(final ServerSocketChannel channel) {
+    private Server(final ServerSocketChannel channel,
+                   final Executor executor,
+                   final SocketAddress address) {
         this.channel = channel;
-        this.sessions = new ArrayList<>(maxSessions);
+        this.executor = executor;
+        this.address = address;
         this.isClosed = false;
-        this.lock = TryLock.create();
     }
 
-    public static Server create(final int port) throws IOException {
+    public static Server create(final String host, final int port) throws IOException {
+        final SocketAddress address = new InetSocketAddress(host, port);
         final ServerSocketChannel channel = ServerSocketChannel.open();
-        channel.bind(new InetSocketAddress(host, port), maxSessions);
-        final Server server = new Server(channel);
+        channel.bind(address, backlog);
+        final Executor executor = Executors.newFixedThreadPool(8);
+        final Server server = new Server(channel, executor, address);
         server.setUncaughtExceptionHandler(server);
         server.start();
         return server;
@@ -48,39 +53,20 @@ public class Server extends Thread implements AutoCloseable, Thread.UncaughtExce
             catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
-            final Session session;
-            try {
-                session = Session.create(ch);
-                try (TryLock ignored = lock.get()) {
-                    sessions.add(session);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            executor.execute(SessionRunnable.create(ch));
         }
     }
 
-    @SuppressWarnings("unused")
-    public boolean isClosed() {
-        return isClosed;
+    @Override
+    public String toString() {
+        return String.format("<Server %s, closed: %s>", address, isClosed);
     }
 
     @Override
     public void close() throws Exception {
-        try (TryLock ignored = lock.get()) {
-            this.interrupt();
-            for (Session session: sessions) {
-                session.interrupt();
-            }
-            for (Session session: sessions) {
-                session.join();
-            }
-            for (Session session: sessions) {
-                session.close();
-            }
-            this.join();
-            isClosed = true;
-        }
+        this.interrupt();
+        this.join();
+        isClosed = true;
     }
 
     @Override
