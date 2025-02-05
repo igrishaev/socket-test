@@ -43,7 +43,11 @@ public class SessionRunnable implements Runnable, AutoCloseable {
                 break;
             }
         }
-        close();
+        try {
+            close();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String readMessage() throws IOException {

@@ -49,35 +49,38 @@ public class Client {
         return new Client(socket);
     }
 
-    public void sendMessage(final String message) {
-        final byte[] buf = message.getBytes(StandardCharsets.UTF_8);
-        try {
-            out.writeInt(buf.length);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            out.write(buf);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public void sendMessage(final String message) throws IOException {
+        out.write(message.getBytes(StandardCharsets.UTF_8));
+//        final byte[] buf = message.getBytes(StandardCharsets.UTF_8);
+//        try {
+//            out.writeInt(buf.length);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//        try {
+//            out.write(buf);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 
-    public String getMessage() {
-        final int len;
-        try {
-            len = in.readInt();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        System.out.println(String.format("getMessage len: %s", len));
-        final byte[] buf;
-        try {
-            buf = in.readNBytes(len);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public String getMessage() throws IOException {
+        final byte[] buf = in.readNBytes(4);
         return new String(buf, StandardCharsets.UTF_8);
+//        final int len;
+//        try {
+//            len = in.readInt();
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//        System.out.println(String.format("getMessage len: %s", len));
+//        final byte[] buf;
+//        try {
+//            buf = in.readNBytes(len);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//        return new String(buf, StandardCharsets.UTF_8);
     }
 
 
